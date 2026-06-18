@@ -1,0 +1,154 @@
+name: Build Nginx centos7
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Nginx arch ${{ matrix.arch }} centos7
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+            artifact_suffix: x86_64-centos7-usr_local
+            INSTALL_PREFIX: /usr/local/nginx
+            PACKAGE_ROOT: /usr/local
+
+    env:
+      PACKAGE_DIR: nginx
+      OPENSSL_VERSION: "1.1.1w"
+      NGINX_VERSION: ${{ github.event.release.tag_name }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Load build config
+        run: |
+          CONFIG_FILE="./build-config.env"
+
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "Config file not found: $CONFIG_FILE"
+            exit 1
+          fi
+
+          set -a
+          . "$CONFIG_FILE"
+          set +a
+
+          echo "PCRE2_VERSION=$PCRE2_VERSION" >> $GITHUB_ENV
+          echo "ZLIB_VERSION=$ZLIB_VERSION" >> $GITHUB_ENV
+
+      - name: Build inside CentOS7 container (docker run)
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            -e OPENSSL_VERSION \
+            -e PCRE2_VERSION \
+            -e ZLIB_VERSION \
+            -e NGINX_VERSION \
+            -e INSTALL_PREFIX=${{ matrix.INSTALL_PREFIX }} \
+            -e PACKAGE_ROOT=${{ matrix.PACKAGE_ROOT }} \
+            -e ARCH=${{ matrix.arch }} \
+            centos:7 bash -c '
+
+            set -e
+
+            echo "OPENSSL_VERSION=$OPENSSL_VERSION"
+            echo "NGINX_VERSION=$NGINX_VERSION"
+
+            cd /etc/yum.repos.d
+            mkdir -p backup
+            mv -f *.repo backup/ 2>/dev/null || true
+
+            echo "[base]" > CentOS-Vault.repo
+            echo "name=CentOS-7 - Base" >> CentOS-Vault.repo
+            echo "baseurl=http://vault.centos.org/7.9.2009/os/\$basearch/" >> CentOS-Vault.repo
+            echo "enabled=1" >> CentOS-Vault.repo
+            echo "gpgcheck=0" >> CentOS-Vault.repo
+
+            echo "[updates]" >> CentOS-Vault.repo
+            echo "baseurl=http://vault.centos.org/7.9.2009/updates/\$basearch/" >> CentOS-Vault.repo
+            echo "enabled=1" >> CentOS-Vault.repo
+            echo "gpgcheck=0" >> CentOS-Vault.repo
+
+            echo "[extras]" >> CentOS-Vault.repo
+            echo "baseurl=http://vault.centos.org/7.9.2009/extras/\$basearch/" >> CentOS-Vault.repo
+            echo "enabled=1" >> CentOS-Vault.repo
+            echo "gpgcheck=0" >> CentOS-Vault.repo
+
+            yum clean all
+            yum makecache
+
+            yum install -y epel-release
+            yum install -y \
+              ca-certificates gcc gcc-c++ glibc-devel \
+              git gzip make perl tar wget \
+              pcre-devel openssl-devel zlib-devel
+
+            if command -v update-ca-trust >/dev/null 2>&1; then
+              update-ca-trust
+            fi
+
+            yum clean all
+
+            wget https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz
+            tar -xzf openssl-${OPENSSL_VERSION}.tar.gz
+
+            wget https://github.com/PCRE2Project/pcre2/releases/download/pcre2-${PCRE2_VERSION}/pcre2-${PCRE2_VERSION}.tar.gz
+            tar -xzf pcre2-${PCRE2_VERSION}.tar.gz
+
+            wget https://www.zlib.net/zlib-${ZLIB_VERSION}.tar.gz
+            tar -xzf zlib-${ZLIB_VERSION}.tar.gz
+
+            wget -O nginx-${NGINX_VERSION}.tar.gz https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz
+            tar -xzf nginx-${NGINX_VERSION}.tar.gz
+            mv nginx-${NGINX_VERSION} nginx-src
+
+            git clone --depth 1 https://github.com/winshining/nginx-http-flv-module.git
+
+            cd nginx-src
+
+            ./configure \
+              --prefix="${INSTALL_PREFIX}" \
+              --add-module=../nginx-http-flv-module \
+              --with-openssl=../openssl-${OPENSSL_VERSION} \
+              --with-pcre=../pcre2-${PCRE2_VERSION} \
+              --with-zlib=../zlib-${ZLIB_VERSION} \
+              --with-http_stub_status_module \
+              --with-http_ssl_module \
+              --with-http_realip_module
+
+            make -j$(nproc)
+            make install
+
+            ${INSTALL_PREFIX}/sbin/nginx -V
+            ${INSTALL_PREFIX}/sbin/nginx -t \
+              -c ${INSTALL_PREFIX}/conf/nginx.conf \
+              -p ${INSTALL_PREFIX}
+
+            SUFFIX="${ARCH}-centos7-usr_local"
+            ASSET_NAME="nginx-${NGINX_VERSION}-${SUFFIX}.tar.gz"
+
+            tar -czf /workspace/${ASSET_NAME} -C "${PACKAGE_ROOT}" nginx
+          '
+
+      - name: Upload release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
+        run: |
+          ASSET_NAME="nginx-${NGINX_VERSION}-${{ matrix.arch }}-centos7-usr_local.tar.gz"
+
+          gh release upload "$TAG_NAME" "$ASSET_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber

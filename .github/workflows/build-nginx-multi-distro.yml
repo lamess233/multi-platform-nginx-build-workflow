@@ -1,0 +1,204 @@
+name: Build Nginx Multi-Distro
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.os.name }}-${{ matrix.arch.arch }}-${{ matrix.prefix.prefix_name }}
+    runs-on: ${{ matrix.arch.runner }}
+
+    container:
+      image: ${{ matrix.os.image }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - name: kylin_v10
+            image: macrosan/kylin:v10-sp3-2403
+            openssl: "1.1.1w"
+
+          - name: openeuler_22_03
+            image: openeuler/openeuler:22.03-lts-sp4
+            openssl: "1.1.1w"
+
+          - name: openeuler_24_03
+            image: openeuler/openeuler:24.03-lts-sp3
+            openssl: "3.0.12"
+
+        arch:
+          - arch: x86_64
+            runner: ubuntu-24.04
+
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+
+        prefix:
+          - prefix_name: usr_local
+            INSTALL_PREFIX: /usr/local/nginx
+            PACKAGE_ROOT: /usr/local
+
+          - prefix_name: opt_software
+            INSTALL_PREFIX: /opt/software/nginx
+            PACKAGE_ROOT: /opt/software
+
+    env:
+      PACKAGE_DIR: nginx
+      OPENSSL_VERSION: ${{ matrix.os.openssl }}
+      NGINX_VERSION: ${{ github.event.release.tag_name }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Load build config
+        run: |
+          CONFIG_FILE="./build-config.env"
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "Config file not found: $CONFIG_FILE"
+            exit 1
+          fi
+          set -a
+          . "$CONFIG_FILE"
+          set +a
+          echo "PCRE2_VERSION=$PCRE2_VERSION" >> $GITHUB_ENV
+          echo "ZLIB_VERSION=$ZLIB_VERSION" >> $GITHUB_ENV
+
+      - name: Install system dependencies
+        run: |
+          if command -v dnf >/dev/null 2>&1; then
+            PACKAGE_MANAGER=dnf
+          elif command -v yum >/dev/null 2>&1; then
+            PACKAGE_MANAGER=yum
+          else
+            echo "No supported package manager found" >&2
+            exit 1
+          fi
+
+          $PACKAGE_MANAGER install -y \
+            ca-certificates \
+            gcc \
+            glibc-devel \
+            git \
+            gzip \
+            make \
+            perl \
+            tar \
+            wget \
+            pcre-devel \
+            openssl-devel \
+            zlib-devel
+
+          if command -v update-ca-trust >/dev/null 2>&1; then
+            update-ca-trust
+          fi
+
+          $PACKAGE_MANAGER clean all
+
+      - name: Install GitHub CLI
+        run: |
+          case "$(uname -m)" in
+            x86_64|amd64) GH_ARCH=amd64 ;;
+            aarch64|arm64) GH_ARCH=arm64 ;;
+            *)
+              echo "Unsupported architecture: $(uname -m)" >&2
+              exit 1
+              ;;
+          esac
+
+          GH_VERSION=$(
+            wget -qO- https://api.github.com/repos/cli/cli/releases/latest \
+              | sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"v\([^"]*\)".*/\1/p' \
+              | head -n 1
+          )
+
+          if [ -z "$GH_VERSION" ]; then
+            echo "Failed to detect GitHub CLI version" >&2
+            exit 1
+          fi
+
+          wget -O gh.tar.gz "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${GH_ARCH}.tar.gz"
+          tar -xzf gh.tar.gz
+          install -m 0755 "gh_${GH_VERSION}_linux_${GH_ARCH}/bin/gh" /usr/local/bin/gh
+          gh --version
+
+      - name: Download nginx-http-flv-module
+        run: |
+          git clone --depth 1 https://github.com/winshining/nginx-http-flv-module.git
+
+      - name: Download OpenSSL
+        run: |
+          wget https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz
+          tar -xzf openssl-${OPENSSL_VERSION}.tar.gz
+
+      - name: Download PCRE2
+        run: |
+          wget https://github.com/PCRE2Project/pcre2/releases/download/pcre2-${PCRE2_VERSION}/pcre2-${PCRE2_VERSION}.tar.gz
+          tar -xzf pcre2-${PCRE2_VERSION}.tar.gz
+
+      - name: Download zlib
+        run: |
+          wget https://www.zlib.net/zlib-${ZLIB_VERSION}.tar.gz
+          tar -xzf zlib-${ZLIB_VERSION}.tar.gz
+
+      - name: Download nginx mainline
+        run: |
+          wget -O nginx-${NGINX_VERSION}.tar.gz https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz
+          tar -xzf nginx-${NGINX_VERSION}.tar.gz
+          mv nginx-${NGINX_VERSION} nginx-src
+
+      - name: Configure nginx
+        run: |
+          cd nginx-src
+          ./configure \
+            --prefix="${{ matrix.prefix.INSTALL_PREFIX }}" \
+            --add-module=../nginx-http-flv-module \
+            --with-openssl=../openssl-${OPENSSL_VERSION} \
+            --with-pcre=../pcre2-${PCRE2_VERSION} \
+            --with-zlib=../zlib-${ZLIB_VERSION} \
+            --with-http_stub_status_module \
+            --with-http_ssl_module \
+            --with-http_realip_module
+
+      - name: Compile nginx
+        run: |
+          cd nginx-src
+          make -j$(nproc)
+
+      - name: Install nginx
+        run: |
+          cd nginx-src
+          make install
+
+      - name: Verify nginx
+        run: |
+          "${{ matrix.prefix.INSTALL_PREFIX }}/sbin/nginx" -V
+          "${{ matrix.prefix.INSTALL_PREFIX }}/sbin/nginx" -t \
+            -c "${{ matrix.prefix.INSTALL_PREFIX }}/conf/nginx.conf" \
+            -p "${{ matrix.prefix.INSTALL_PREFIX }}"
+
+      - name: Package nginx
+        id: package
+        run: |
+          SUFFIX="${{ matrix.arch.arch }}-${{ matrix.os.name }}-${{ matrix.prefix.prefix_name }}"
+          ASSET_NAME="nginx-${NGINX_VERSION}-${SUFFIX}.tar.gz"
+          ASSET_PATH="$GITHUB_WORKSPACE/$ASSET_NAME"
+
+          tar -czf "$ASSET_PATH" -C "${{ matrix.prefix.PACKAGE_ROOT }}" "$PACKAGE_DIR"
+
+          echo "asset_path=$ASSET_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
+          ASSET_PATH: ${{ steps.package.outputs.asset_path }}
+        run: |
+          gh release upload "$TAG_NAME" "$ASSET_PATH" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
