@@ -169,7 +169,8 @@ jobs:
             libxslt-devel \
             gd-devel \
             perl-devel \
-            gperftools-devel
+            gperftools-devel \
+            GeoIP-devel
 
           if command -v update-ca-trust >/dev/null 2>&1; then
             update-ca-trust
