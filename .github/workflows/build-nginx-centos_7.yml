@@ -23,7 +23,7 @@ jobs:
             PACKAGE_ROOT: /usr/local
 
     env:
-      PACKAGE_DIR: nginx
+      PACKAGE_DIR: nginx-${{ github.event.release.tag_name }}
       OPENSSL_VERSION: "1.1.1w"
       NGINX_VERSION: ${{ github.event.release.tag_name }}
 
@@ -56,6 +56,7 @@ jobs:
             -e PCRE2_VERSION \
             -e ZLIB_VERSION \
             -e NGINX_VERSION \
+            -e PACKAGE_DIR \
             -e INSTALL_PREFIX=${{ matrix.INSTALL_PREFIX }} \
             -e PACKAGE_ROOT=${{ matrix.PACKAGE_ROOT }} \
             -e ARCH=${{ matrix.arch }} \
@@ -136,10 +137,21 @@ jobs:
               -c ${INSTALL_PREFIX}/conf/nginx.conf \
               -p ${INSTALL_PREFIX}
 
+            INSTALL_DIR=$(basename "${INSTALL_PREFIX}")
+            if [ "$PACKAGE_DIR" != "$INSTALL_DIR" ]; then
+              mv "${PACKAGE_ROOT}/${INSTALL_DIR}" "${PACKAGE_ROOT}/${PACKAGE_DIR}"
+              ln -s "$PACKAGE_DIR" "${PACKAGE_ROOT}/${INSTALL_DIR}"
+            fi
+
             SUFFIX="${ARCH}-centos7-usr_local"
             ASSET_NAME="nginx-${NGINX_VERSION}-${SUFFIX}.tar.gz"
 
-            tar -czf /workspace/${ASSET_NAME} -C "${PACKAGE_ROOT}" nginx
+            TAR_ITEMS="$PACKAGE_DIR"
+            if [ "$PACKAGE_DIR" != "$INSTALL_DIR" ]; then
+              TAR_ITEMS="$TAR_ITEMS $INSTALL_DIR"
+            fi
+
+            tar -czf /workspace/${ASSET_NAME} -C "${PACKAGE_ROOT}" $TAR_ITEMS
           '
 
       - name: Upload release asset

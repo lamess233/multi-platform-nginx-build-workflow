@@ -28,6 +28,20 @@ It is designed for reproducible packaging and release distribution of Nginx bina
 
 ---
 
+## Download
+
+```Shell
+# Set your platform variables (adjust as needed)
+VERSION=1.31.2
+ARCH=x86_64 # x86_64/aarch64
+PLATFORM=openeuler_22_03 # openeuler_22_03 / openeuler_24_03 / kylin_v10
+PRIFIX=usr_local  # usr_local / opt_software
+
+wget https://github.com/lamess233/multi-platform-nginx-build-workflow/releases/download/${VERSION}/nginx-${VERSION}-${ARCH}-${PLATFORM}-${PRIFIX}.tar.gz
+```
+
+---
+
 ## License
 
 This repository only provides build automation scripts.

@@ -48,7 +48,7 @@ jobs:
             PACKAGE_ROOT: /opt/software
 
     env:
-      PACKAGE_DIR: nginx
+      PACKAGE_DIR: nginx-${{ github.event.release.tag_name }}
       OPENSSL_VERSION: ${{ matrix.os.openssl }}
       NGINX_VERSION: ${{ github.event.release.tag_name }}
 
@@ -182,6 +182,14 @@ jobs:
             -c "${{ matrix.prefix.INSTALL_PREFIX }}/conf/nginx.conf" \
             -p "${{ matrix.prefix.INSTALL_PREFIX }}"
 
+      - name: Prepare package directory
+        run: |
+          INSTALL_DIR=$(basename "${{ matrix.prefix.INSTALL_PREFIX }}")
+          if [ "$PACKAGE_DIR" != "$INSTALL_DIR" ]; then
+            mv "${{ matrix.prefix.PACKAGE_ROOT }}/$INSTALL_DIR" "${{ matrix.prefix.PACKAGE_ROOT }}/$PACKAGE_DIR"
+            ln -s "$PACKAGE_DIR" "${{ matrix.prefix.PACKAGE_ROOT }}/$INSTALL_DIR"
+          fi
+
       - name: Package nginx
         id: package
         run: |
@@ -189,7 +197,13 @@ jobs:
           ASSET_NAME="nginx-${NGINX_VERSION}-${SUFFIX}.tar.gz"
           ASSET_PATH="$GITHUB_WORKSPACE/$ASSET_NAME"
 
-          tar -czf "$ASSET_PATH" -C "${{ matrix.prefix.PACKAGE_ROOT }}" "$PACKAGE_DIR"
+          INSTALL_DIR=$(basename "${{ matrix.prefix.INSTALL_PREFIX }}")
+          TAR_ITEMS="$PACKAGE_DIR"
+          if [ "$PACKAGE_DIR" != "$INSTALL_DIR" ]; then
+            TAR_ITEMS="$TAR_ITEMS $INSTALL_DIR"
+          fi
+
+          tar -czf "$ASSET_PATH" -C "${{ matrix.prefix.PACKAGE_ROOT }}" $TAR_ITEMS
 
           echo "asset_path=$ASSET_PATH" >> "$GITHUB_OUTPUT"
 
