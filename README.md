@@ -14,8 +14,9 @@ It is designed for reproducible packaging and release distribution of Nginx bina
   - `aarch64`
 - Supports multiple Linux environments:
   - CentOS 7
-  - openEuler 22.03 LTS
-  - Kylin V10 SP3
+  - openEuler 22.03
+  - openEuler 24.03
+  - Kylin V10
 - Supports multiple installation prefixes:
   - `/usr/local/nginx`
   - `/opt/software/nginx`
