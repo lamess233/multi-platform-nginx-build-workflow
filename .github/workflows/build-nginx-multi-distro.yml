@@ -268,7 +268,7 @@ jobs:
       - name: Configure nginx
         if: steps.filter.outputs.match == 'true'
         run: |
-          PROFILE_FILE="../build-profiles/${NGINX_BUILD_PROFILE}.conf"
+          PROFILE_FILE="./build-profiles/${NGINX_BUILD_PROFILE}.conf"
           if [ ! -f "$PROFILE_FILE" ]; then
             echo "Build profile not found: $PROFILE_FILE"
             exit 1
