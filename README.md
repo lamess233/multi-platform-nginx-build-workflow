@@ -45,6 +45,19 @@ For manual workflow triggers, you can override this setting via the `build_profi
 
 See [`build-profiles/README.md`](build-profiles/README.md) for detailed profile documentation.
 
+### Prefix Filtering (Release Builds)
+
+You can limit which installation prefixes are built during **release events** by setting `ALLOWED_PREFIXES` in `build-config.env`:
+
+```bash
+ALLOWED_PREFIXES=usr_local,opt_software  # Build both prefixes
+ALLOWED_PREFIXES=usr_local               # Build only /usr/local/nginx
+```
+
+- **Format**: Comma-separated list of prefix names (`usr_local`, `opt_software`)
+- **Default**: If unset or empty, all prefixes are built
+- **Scope**: Only applies to release-triggered builds. Manual workflow dispatches ignore this setting and use the dropdown filter instead.
+
 ### Package Structure
 
 Each release package contains:

@@ -96,11 +96,15 @@ jobs:
       NGINX_VERSION: ${{ github.event.release.tag_name || inputs.nginx_version }}
 
     steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
       - name: Check build filter
         id: filter
         run: |
           MATCH=true
 
+          # Manual dispatch filters
           if [ "${{ github.event.inputs.os_name }}" != "" ] && [ "${{ github.event.inputs.os_name }}" != "${{ matrix.os.name }}" ]; then
             MATCH=false
           fi
@@ -113,15 +117,28 @@ jobs:
             MATCH=false
           fi
 
+          if [ "${{ github.event_name }}" = "release" ]; then
+            CONFIG_FILE="./build-config.env"
+            if [ -f "$CONFIG_FILE" ]; then
+              set -a
+              . "$CONFIG_FILE"
+              set +a
+
+              if [ -n "$ALLOWED_PREFIXES" ]; then
+                CURRENT_PREFIX="${{ matrix.prefix.prefix_name }}"
+                if ! echo ",$ALLOWED_PREFIXES," | grep -q ",$CURRENT_PREFIX,"; then
+                  MATCH=false
+                  echo "Skipping build: prefix '$CURRENT_PREFIX' not in ALLOWED_PREFIXES ($ALLOWED_PREFIXES)"
+                fi
+              fi
+            fi
+          fi
+
           echo "match=$MATCH" >> "$GITHUB_OUTPUT"
 
           if [ "$MATCH" = "false" ]; then
             echo "Skipping build: does not match filter criteria"
           fi
-
-      - name: Checkout source
-        if: steps.filter.outputs.match == 'true'
-        uses: actions/checkout@v6
 
       - name: Load build config
         if: steps.filter.outputs.match == 'true'
