@@ -258,7 +258,7 @@ jobs:
       - name: Download zlib
         if: steps.filter.outputs.match == 'true'
         run: |
-          wget https://www.zlib.net/zlib-${ZLIB_VERSION}.tar.gz
+          wget https://github.com/madler/zlib/releases/download/v${ZLIB_VERSION}/zlib-${ZLIB_VERSION}.tar.gz
           tar -xzf zlib-${ZLIB_VERSION}.tar.gz
 
       - name: Download nginx mainline
