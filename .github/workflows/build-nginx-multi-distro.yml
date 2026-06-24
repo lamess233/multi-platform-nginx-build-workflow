@@ -3,6 +3,40 @@ name: Build Nginx Multi-Distro
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      nginx_version:
+        description: 'Nginx version to build (e.g., 1.27.3)'
+        required: true
+        type: string
+      os_name:
+        description: 'Filter by OS (leave empty for all)'
+        required: false
+        type: choice
+        default: ''
+        options:
+          - ''
+          - kylin_v10
+          - openeuler_22_03
+          - openeuler_24_03
+      arch:
+        description: 'Filter by architecture (leave empty for all)'
+        required: false
+        type: choice
+        default: ''
+        options:
+          - ''
+          - x86_64
+          - aarch64
+      prefix_name:
+        description: 'Filter by prefix (leave empty for all)'
+        required: false
+        type: choice
+        default: ''
+        options:
+          - ''
+          - usr_local
+          - opt_software
 
 permissions:
   contents: write
@@ -11,6 +45,10 @@ jobs:
   build:
     name: ${{ matrix.os.name }}-${{ matrix.arch.arch }}-${{ matrix.prefix.prefix_name }}
     runs-on: ${{ matrix.arch.runner }}
+    if: |
+      (inputs.os_name == '' || matrix.os.name == inputs.os_name) &&
+      (inputs.arch == '' || matrix.arch.arch == inputs.arch) &&
+      (inputs.prefix_name == '' || matrix.prefix.prefix_name == inputs.prefix_name)
 
     container:
       image: ${{ matrix.os.image }}
@@ -48,11 +86,20 @@ jobs:
             PACKAGE_ROOT: /opt/software
 
     env:
-      PACKAGE_DIR: nginx-${{ github.event.release.tag_name }}
+      PACKAGE_DIR: nginx-${{ github.event.release.tag_name || inputs.nginx_version }}
       OPENSSL_VERSION: ${{ matrix.os.openssl }}
-      NGINX_VERSION: ${{ github.event.release.tag_name }}
+      NGINX_VERSION: ${{ github.event.release.tag_name || inputs.nginx_version }}
 
     steps:
+      - name: Display build plan
+        run: |
+          echo "=== Build Configuration ==="
+          echo "Nginx version: ${{ env.NGINX_VERSION }}"
+          echo "OS: ${{ matrix.os.name }}"
+          echo "Architecture: ${{ matrix.arch.arch }}"
+          echo "Prefix: ${{ matrix.prefix.prefix_name }}"
+          echo "OpenSSL version: ${{ matrix.os.openssl }}"
+
       - name: Checkout source
         uses: actions/checkout@v6
 
