@@ -9,6 +9,15 @@ on:
         description: 'Nginx version to build (e.g., 1.31.2)'
         required: true
         type: string
+      build_profile:
+        description: 'Build profile (leave empty to use build-config.env)'
+        required: false
+        type: choice
+        default: ''
+        options:
+          - ''
+          - minimal
+          - standard
       os_name:
         description: 'Filter by OS (leave empty for all)'
         required: false
@@ -92,17 +101,14 @@ jobs:
         run: |
           MATCH=true
 
-          # Check OS filter
           if [ "${{ github.event.inputs.os_name }}" != "" ] && [ "${{ github.event.inputs.os_name }}" != "${{ matrix.os.name }}" ]; then
             MATCH=false
           fi
 
-          # Check arch filter
           if [ "${{ github.event.inputs.arch }}" != "" ] && [ "${{ github.event.inputs.arch }}" != "${{ matrix.arch.arch }}" ]; then
             MATCH=false
           fi
 
-          # Check prefix filter
           if [ "${{ github.event.inputs.prefix_name }}" != "" ] && [ "${{ github.event.inputs.prefix_name }}" != "${{ matrix.prefix.prefix_name }}" ]; then
             MATCH=false
           fi
@@ -112,16 +118,6 @@ jobs:
           if [ "$MATCH" = "false" ]; then
             echo "Skipping build: does not match filter criteria"
           fi
-
-      - name: Display build plan
-        if: steps.filter.outputs.match == 'true'
-        run: |
-          echo "=== Build Configuration ==="
-          echo "Nginx version: ${{ env.NGINX_VERSION }}"
-          echo "OS: ${{ matrix.os.name }}"
-          echo "Architecture: ${{ matrix.arch.arch }}"
-          echo "Prefix: ${{ matrix.prefix.prefix_name }}"
-          echo "OpenSSL version: ${{ matrix.os.openssl }}"
 
       - name: Checkout source
         if: steps.filter.outputs.match == 'true'
@@ -140,6 +136,25 @@ jobs:
           set +a
           echo "PCRE2_VERSION=$PCRE2_VERSION" >> $GITHUB_ENV
           echo "ZLIB_VERSION=$ZLIB_VERSION" >> $GITHUB_ENV
+
+          if [ "${{ github.event.inputs.build_profile }}" != "" ]; then
+            BUILD_PROFILE="${{ github.event.inputs.build_profile }}"
+          else
+            BUILD_PROFILE="${NGINX_BUILD_PROFILE:-minimal}"
+          fi
+          echo "NGINX_BUILD_PROFILE=$BUILD_PROFILE" >> $GITHUB_ENV
+          echo "Using build profile: $BUILD_PROFILE"
+
+      - name: Display build plan
+        if: steps.filter.outputs.match == 'true'
+        run: |
+          echo "=== Build Configuration ==="
+          echo "Nginx version: ${{ env.NGINX_VERSION }}"
+          echo "Build profile: ${{ env.NGINX_BUILD_PROFILE }}"
+          echo "OS: ${{ matrix.os.name }}"
+          echo "Architecture: ${{ matrix.arch.arch }}"
+          echo "Prefix: ${{ matrix.prefix.prefix_name }}"
+          echo "OpenSSL version: ${{ matrix.os.openssl }}"
 
       - name: Install system dependencies
         if: steps.filter.outputs.match == 'true'
@@ -239,15 +254,12 @@ jobs:
       - name: Prepare build flags
         if: steps.filter.outputs.match == 'true'
         run: |
-          # Base compiler flags (common for all architectures)
           CC_OPT="-O2 -g -grecord-gcc-switches -pipe -fstack-protector-strong -Wall -Werror=format-security -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -mtune=generic -fasynchronous-unwind-tables -fstack-clash-protection"
 
-          # Architecture-specific flags
           if [ "${{ matrix.arch.arch }}" = "x86_64" ]; then
             CC_OPT="$CC_OPT -m64"
           fi
 
-          # Linker flags (common for all architectures)
           LD_OPT="-Wl,-z,relro -Wl,-z,now -Wl,-E"
 
           echo "CC_OPT_FLAGS=$CC_OPT" >> $GITHUB_ENV
@@ -256,51 +268,23 @@ jobs:
       - name: Configure nginx
         if: steps.filter.outputs.match == 'true'
         run: |
+          PROFILE_FILE="../build-profiles/${NGINX_BUILD_PROFILE}.conf"
+          if [ ! -f "$PROFILE_FILE" ]; then
+            echo "Build profile not found: $PROFILE_FILE"
+            exit 1
+          fi
+
+          PROFILE_ARGS=$(grep -v '^#' "$PROFILE_FILE" | grep -v '^[[:space:]]*$' | tr '\n' ' ')
+
           cd nginx-src
           ./configure \
             --prefix="${{ matrix.prefix.INSTALL_PREFIX }}" \
-            --add-module=../nginx-http-flv-module \
             --with-openssl=../openssl-${OPENSSL_VERSION} \
             --with-pcre=../pcre2-${PCRE2_VERSION} \
             --with-zlib=../zlib-${ZLIB_VERSION} \
-            --with-select_module \
-            --with-poll_module \
-            --with-threads \
-            --with-file-aio \
-            --with-http_ssl_module \
-            --with-http_v2_module \
-            --with-http_v3_module \
-            --with-http_realip_module \
-            --with-http_addition_module \
-            --with-http_xslt_module=dynamic \
-            --with-http_image_filter_module=dynamic \
-            --with-http_geoip_module=dynamic \
-            --with-http_sub_module \
-            --with-http_dav_module \
-            --with-http_flv_module \
-            --with-http_mp4_module \
-            --with-http_gunzip_module \
-            --with-http_gzip_static_module \
-            --with-http_random_index_module \
-            --with-http_secure_link_module \
-            --with-http_degradation_module \
-            --with-http_slice_module \
-            --with-http_stub_status_module \
-            --with-http_perl_module=dynamic \
-            --with-http_auth_request_module \
-            --with-mail=dynamic \
-            --with-mail_ssl_module \
-            --with-pcre-jit \
-            --with-stream=dynamic \
-            --with-stream_ssl_module \
-            --with-stream_realip_module \
-            --with-stream_geoip_module \
-            --with-stream_ssl_preread_module \
-            --with-google_perftools_module \
-            --with-debug \
-            --with-compat \
             --with-cc-opt="${CC_OPT_FLAGS}" \
-            --with-ld-opt="${LD_OPT_FLAGS}"
+            --with-ld-opt="${LD_OPT_FLAGS}" \
+            $PROFILE_ARGS
 
       - name: Compile nginx
         if: steps.filter.outputs.match == 'true'
