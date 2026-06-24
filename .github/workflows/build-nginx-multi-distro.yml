@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       nginx_version:
-        description: 'Nginx version to build (e.g., 1.27.3)'
+        description: 'Nginx version to build (e.g., 1.31.2)'
         required: true
         type: string
       os_name:
@@ -362,7 +362,8 @@ jobs:
 
       - name: Upload to workflow artifacts
         if: steps.filter.outputs.match == 'true' && github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nginx-${{ env.NGINX_VERSION }}-${{ matrix.arch.arch }}-${{ matrix.os.name }}-${{ matrix.prefix.prefix_name }}
           path: ${{ steps.package.outputs.asset_path }}
+          retention-days: 3
