@@ -152,6 +152,22 @@ jobs:
           tar -xzf nginx-${NGINX_VERSION}.tar.gz
           mv nginx-${NGINX_VERSION} nginx-src
 
+      - name: Prepare build flags
+        run: |
+          # Base compiler flags (common for all architectures)
+          CC_OPT="-O2 -g -grecord-gcc-switches -pipe -fstack-protector-strong -Wall -Werror=format-security -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -mtune=generic -fasynchronous-unwind-tables -fstack-clash-protection"
+
+          # Architecture-specific flags
+          if [ "${{ matrix.arch.arch }}" = "x86_64" ]; then
+            CC_OPT="$CC_OPT -m64"
+          fi
+
+          # Linker flags (common for all architectures)
+          LD_OPT="-Wl,-z,relro -Wl,-z,now -Wl,-E"
+
+          echo "CC_OPT_FLAGS=$CC_OPT" >> $GITHUB_ENV
+          echo "LD_OPT_FLAGS=$LD_OPT" >> $GITHUB_ENV
+
       - name: Configure nginx
         run: |
           cd nginx-src
@@ -163,7 +179,9 @@ jobs:
             --with-zlib=../zlib-${ZLIB_VERSION} \
             --with-http_stub_status_module \
             --with-http_ssl_module \
-            --with-http_realip_module
+            --with-http_realip_module \
+            --with-cc-opt="${CC_OPT_FLAGS}" \
+            --with-ld-opt="${LD_OPT_FLAGS}"
 
       - name: Compile nginx
         run: |

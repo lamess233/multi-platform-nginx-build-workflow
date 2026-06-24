@@ -117,6 +117,10 @@ jobs:
 
             git clone --depth 1 https://github.com/winshining/nginx-http-flv-module.git
 
+            # Prepare build flags
+            CC_OPT="-O2 -g -grecord-gcc-switches -pipe -fstack-protector-strong -Wall -Werror=format-security -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -mtune=generic -fasynchronous-unwind-tables -fstack-clash-protection -m64"
+            LD_OPT="-Wl,-z,relro -Wl,-z,now -Wl,-E"
+
             cd nginx-src
 
             ./configure \
@@ -127,7 +131,9 @@ jobs:
               --with-zlib=../zlib-${ZLIB_VERSION} \
               --with-http_stub_status_module \
               --with-http_ssl_module \
-              --with-http_realip_module
+              --with-http_realip_module \
+              --with-cc-opt="${CC_OPT}" \
+              --with-ld-opt="${LD_OPT}"
 
             make -j$(nproc)
             make install
