@@ -59,13 +59,26 @@ ALLOWED_PREFIXES=usr_local               # Build only /usr/local/nginx
 - **Default**: If unset or empty, all prefixes are built
 - **Scope**: Only applies to release-triggered builds. Manual workflow dispatches ignore this setting and use the dropdown filter instead.
 
+### Package Directory Modes
+
+- **Release builds** always package into a top-level `nginx/` directory.
+- **Manual builds** support two package directory modes:
+  - `versioned` (default): package `nginx-{VERSION}/` and include an `nginx` symlink pointing to it
+  - `static`: package only `nginx/`
+
 ### Package Structure
 
-Each release package contains:
-- `nginx-{VERSION}/`: Versioned directory with nginx installation
-- `nginx` symlink: Points to the versioned directory for easy upgrades
+Release package example after extraction (for `/usr/local` prefix):
+```
+/usr/local/
+└── nginx/
+    ├── sbin/nginx
+    ├── conf/
+    ├── html/
+    └── logs/
+```
 
-Example after extraction (for `/usr/local` prefix):
+Manual `versioned` package example after extraction (for `/usr/local` prefix):
 ```
 /usr/local/
 ├── nginx -> nginx-1.31.2    # Symlink for current version
@@ -76,7 +89,7 @@ Example after extraction (for `/usr/local` prefix):
     └── logs/
 ```
 
-This structure allows side-by-side installations of multiple versions and easy rollback by changing the symlink.
+The `versioned` mode allows side-by-side installations of multiple versions and easy rollback by changing the symlink.
 
 ---
 

@@ -9,6 +9,14 @@ on:
         description: 'Nginx version to build (e.g., 1.31.2)'
         required: true
         type: string
+      package_dir_mode:
+        description: 'Package directory mode'
+        required: false
+        type: choice
+        default: 'versioned'
+        options:
+          - versioned
+          - static
       build_profile:
         description: 'Build profile (leave empty to use build-config.env)'
         required: false
@@ -91,7 +99,6 @@ jobs:
             PACKAGE_ROOT: /opt/software
 
     env:
-      PACKAGE_DIR: nginx-${{ github.event.release.tag_name || inputs.nginx_version }}
       OPENSSL_VERSION: ${{ matrix.os.openssl }}
       NGINX_VERSION: ${{ github.event.release.tag_name || inputs.nginx_version }}
 
@@ -162,12 +169,32 @@ jobs:
           echo "NGINX_BUILD_PROFILE=$BUILD_PROFILE" >> $GITHUB_ENV
           echo "Using build profile: $BUILD_PROFILE"
 
+      - name: Resolve package directory
+        if: steps.filter.outputs.match == 'true'
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            PACKAGE_DIR="nginx"
+            PACKAGE_DIR_MODE="static"
+          elif [ "${{ github.event.inputs.package_dir_mode }}" = "static" ]; then
+            PACKAGE_DIR="nginx"
+            PACKAGE_DIR_MODE="static"
+          else
+            PACKAGE_DIR="nginx-${NGINX_VERSION}"
+            PACKAGE_DIR_MODE="versioned"
+          fi
+
+          echo "PACKAGE_DIR=$PACKAGE_DIR" >> $GITHUB_ENV
+          echo "PACKAGE_DIR_MODE=$PACKAGE_DIR_MODE" >> $GITHUB_ENV
+          echo "Resolved package directory: $PACKAGE_DIR ($PACKAGE_DIR_MODE)"
+
       - name: Display build plan
         if: steps.filter.outputs.match == 'true'
         run: |
           echo "=== Build Configuration ==="
-          echo "Nginx version: ${{ env.NGINX_VERSION }}"
-          echo "Build profile: ${{ env.NGINX_BUILD_PROFILE }}"
+          echo "Nginx version: $NGINX_VERSION"
+          echo "Package directory mode: $PACKAGE_DIR_MODE"
+          echo "Package directory: $PACKAGE_DIR"
+          echo "Build profile: $NGINX_BUILD_PROFILE"
           echo "OS: ${{ matrix.os.name }}"
           echo "Architecture: ${{ matrix.arch.arch }}"
           echo "Prefix: ${{ matrix.prefix.prefix_name }}"
