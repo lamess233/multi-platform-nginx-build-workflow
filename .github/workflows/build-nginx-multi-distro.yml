@@ -265,10 +265,11 @@ jobs:
           install -m 0755 "gh_${GH_VERSION}_linux_${GH_ARCH}/bin/gh" /usr/local/bin/gh
           gh --version
 
-      - name: Download nginx-http-flv-module
+      - name: Download Nginx modules
         if: steps.filter.outputs.match == 'true'
         run: |
-          git clone --depth 1 https://github.com/winshining/nginx-http-flv-module.git
+          git clone --recursive https://github.com/winshining/nginx-http-flv-module.git
+          git clone --recursive https://github.com/openresty/headers-more-nginx-module
 
       - name: Download OpenSSL
         if: steps.filter.outputs.match == 'true'
